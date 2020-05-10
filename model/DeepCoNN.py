@@ -21,24 +21,30 @@ class ConvMaxLayer(torch.nn.Module):
         super().__init__()
 
         self.convs = torch.nn.ModuleList()
+        self.maxs = torch.nn.ModuleList()
         for width in config.kernel_widths:
-            self.Convs.append(torch.nn.Conv1d(
+            self.convs.append(torch.nn.Conv1d(
                 in_channels=config.word_dim,
                 out_channels=config.kernel_deep,
-                kernel_size=width))
+                kernel_size=width,
+                stride=1))
+            self.maxs.append(torch.nn.MaxPool1d(
+                kernel_size=config.max_review_length - width + 1,
+                stride=1))
 
         self.activation = torch.nn.ReLU()
-        self.max_pool = torch.nn.MaxPool1d(kernel_size=config.max_review_length)
         self.full_connect = torch.nn.Linear(config.kernel_deep * len(config.kernel_widths), config.latent_factors)
 
     def forward(self, review):
         outputs = []
-        for conv in self.convs:
+        review = review.permute(0, 2, 1)
+        for max_pool, conv in zip(self.maxs, self.convs):
             out = self.activation(conv(review))
-            max_out = self.max_pool(out)
-            outputs.append(max_out)
+            max_out = max_pool(out)
+            flatten_out = torch.flatten(max_out, start_dim=1)
+            outputs.append(flatten_out)
 
-        conv_out = torch.cat(outputs)
+        conv_out = torch.cat(outputs, dim=1)
         latent = self.full_connect(conv_out)
 
         return latent
@@ -77,6 +83,6 @@ class DeepCoNN(BaseModel):
     def forward(self, user_review, item_review):
         user_latent = self.user_layer(user_review)
         item_latent = self.item_layer(item_review)
-        latent = torch.cat([user_latent, item_latent])
+        latent = torch.cat([user_latent, item_latent], dim=1)
         predict = self.share_layer(latent)
         return predict

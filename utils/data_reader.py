@@ -30,19 +30,36 @@ def get_punctuations() -> Set[str]:
         return set(f.read().splitlines())
 
 
-STOP_WORDS = get_stop_words()
-PUNCTUATIONS = get_punctuations()
-LEMMATIZER = nltk.WordNetLemmatizer()
+def get_max_review_length(data: DataFrame, percentile: float = 0.85) -> int:
+    """
+    We set the max review length to 85% percentile of all data.
+    """
+    review_lengths = data["review"] \
+        .groupby(data["userID"]) \
+        .apply(lambda words: len(" ".join(words).split()))
+    max_length_user = int(review_lengths.quantile(percentile, interpolation="lower"))
+
+    review_lengths = data["review"] \
+        .groupby(data["itemID"]) \
+        .apply(lambda words: len(" ".join(words).split()))
+    max_length_item = int(review_lengths.quantile(percentile, interpolation="lower"))
+
+    return max(max_length_item, max_length_user)
+
+
+_STOP_WORDS = get_stop_words()
+_PUNCTUATIONS = get_punctuations()
+_LEMMATIZER = nltk.WordNetLemmatizer()
 
 
 def clean_review(review: str):
     review = review.lower()
-    assert "'" not in PUNCTUATIONS
-    for p in PUNCTUATIONS:
+    assert "'" not in _PUNCTUATIONS
+    for p in _PUNCTUATIONS:
         review = review.replace(p, " ")
     tokens = review.split()
-    tokens = [word for word in tokens if word not in STOP_WORDS]
-    tokens = [LEMMATIZER.lemmatize(word) for word in tokens]
+    tokens = [word for word in tokens if word not in _STOP_WORDS]
+    tokens = [_LEMMATIZER.lemmatize(word) for word in tokens]
     return " ".join(tokens)
 
 
@@ -50,10 +67,12 @@ if __name__ == "__main__":
     logger.info("reading raw data...")
     df = pandas.read_json(ROOT_DIR.joinpath("data/Digital_Music_5.json"), lines=True)
     df = df[["reviewerID", "asin", "reviewText", "overall"]]
-    df.columns = ["userID", "itemID", "review", "overall"]
+    df.columns = ["userID", "itemID", "review", "rating"]
 
     logger.info("cleaning review text...")
     df["review"] = df["review"].apply(clean_review)
 
     df.to_json(ROOT_DIR.joinpath("data/reviews.json"), orient="records", lines=True)
     logger.info("Processed data saved.")
+
+    logger.info(f"max review length is {get_max_review_length(get_all_data())}")

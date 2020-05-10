@@ -12,11 +12,15 @@ _WORD_EMBEDDING_SIZE = 300
 _WORD_VEC: Word2VecKeyedVectors
 
 
-def review2vec(review: str) -> torch.Tensor:
+def review2vec(review: str, max_length: int) -> torch.Tensor:
     vecs = []
-    for word in review.split():
+    for i, word in enumerate(review.split()):
+        if i >= max_length:
+            break
         if word in _WORD_VEC:
             vecs.append(torch.Tensor(_WORD_VEC[word]))
+        else:
+            vecs.append(torch.zeros(_WORD_EMBEDDING_SIZE))
     if vecs:
         return torch.stack(vecs)
     else:
@@ -26,6 +30,7 @@ def review2vec(review: str) -> torch.Tensor:
 logger.info("loading word2vec model...")
 path = ROOT_DIR.joinpath('data/GoogleNews-vectors-negative300.bin')
 _WORD_VEC = KeyedVectors.load_word2vec_format(path, binary=True)
+# _WORD_VEC = dict()
 logger.info("word2vec model loaded.")
 
 if __name__ == "__main__":
