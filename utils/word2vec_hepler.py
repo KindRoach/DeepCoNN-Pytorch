@@ -1,40 +1,37 @@
-from typing import Set
+from typing import Set, List
 
-import torch
+import numpy as np
+import pandas
 from gensim.models import KeyedVectors
 from gensim.models.keyedvectors import Word2VecKeyedVectors
 
-from utils.data_reader import get_all_data
 from utils.log_hepler import logger
 from utils.path_helper import ROOT_DIR
 
-_WORD_EMBEDDING_SIZE = 300
-_WORD_VEC: Word2VecKeyedVectors
+PAD_WORD = "<pad>"
+WORD_EMBEDDING_SIZE = 300
+WORD_VEC: Word2VecKeyedVectors
 
 
-def review2vec(review: str, max_length: int) -> torch.Tensor:
-    vecs = []
-    for i, word in enumerate(review.split()):
-        if i >= max_length:
-            break
+def review2wid(review: str) -> List[int]:
+    wids = []
+    for word in review.split():
         if word in _WORD_VEC:
-            vecs.append(torch.Tensor(_WORD_VEC[word]))
+            wid = _WORD_VEC.vocab[word].index
         else:
-            vecs.append(torch.zeros(_WORD_EMBEDDING_SIZE))
-    if vecs:
-        return torch.stack(vecs)
-    else:
-        return torch.empty(0, _WORD_EMBEDDING_SIZE)
+            wid = _WORD_VEC.vocab[PAD_WORD].index
+        wids.append(wid)
+    return wids
 
 
 logger.info("loading word2vec model...")
 path = ROOT_DIR.joinpath('data/GoogleNews-vectors-negative300.bin')
 _WORD_VEC = KeyedVectors.load_word2vec_format(path, binary=True)
-# _WORD_VEC = dict()
+_WORD_VEC.add([PAD_WORD], np.zeros([1, 300]))
 logger.info("word2vec model loaded.")
 
 if __name__ == "__main__":
-    df = get_all_data()
+    df = pandas.read_json(ROOT_DIR.joinpath("data/reviews.json"), lines=True)
 
     unknown_words: Set[str] = set()
     for review in df["review"]:

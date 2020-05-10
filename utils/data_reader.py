@@ -1,4 +1,5 @@
-from typing import Set
+import pickle
+from typing import Set, List, Dict
 
 import nltk
 import pandas
@@ -7,6 +8,7 @@ from sklearn.model_selection import train_test_split
 
 from utils.log_hepler import logger
 from utils.path_helper import ROOT_DIR
+from utils.word2vec_hepler import review2wid, PAD_WORD
 
 
 def get_all_data() -> DataFrame:
@@ -47,32 +49,62 @@ def get_max_review_length(data: DataFrame, percentile: float = 0.85) -> int:
     return max(max_length_item, max_length_user)
 
 
-_STOP_WORDS = get_stop_words()
-_PUNCTUATIONS = get_punctuations()
-_LEMMATIZER = nltk.WordNetLemmatizer()
-
-
-def clean_review(review: str):
-    review = review.lower()
-    assert "'" not in _PUNCTUATIONS
-    for p in _PUNCTUATIONS:
-        review = review.replace(p, " ")
-    tokens = review.split()
-    tokens = [word for word in tokens if word not in _STOP_WORDS]
-    tokens = [_LEMMATIZER.lemmatize(word) for word in tokens]
-    return " ".join(tokens)
-
-
-if __name__ == "__main__":
+def process_raw_data():
+    global stop_words, punctuations, lemmatizer
     logger.info("reading raw data...")
     df = pandas.read_json(ROOT_DIR.joinpath("data/Digital_Music_5.json"), lines=True)
     df = df[["reviewerID", "asin", "reviewText", "overall"]]
     df.columns = ["userID", "itemID", "review", "rating"]
+    stop_words = get_stop_words()
+    punctuations = get_punctuations()
+    lemmatizer = nltk.WordNetLemmatizer()
+
+    def clean_review(review: str):
+        review = review.lower()
+        assert "'" not in punctuations
+        for p in punctuations:
+            review = review.replace(p, " ")
+        tokens = review.split()
+        tokens = [word for word in tokens if word not in stop_words]
+        tokens = [lemmatizer.lemmatize(word) for word in tokens]
+        return " ".join(tokens)
 
     logger.info("cleaning review text...")
     df["review"] = df["review"].apply(clean_review)
-
     df.to_json(ROOT_DIR.joinpath("data/reviews.json"), orient="records", lines=True)
     logger.info("Processed data saved.")
 
-    logger.info(f"max review length is {get_max_review_length(get_all_data())}")
+
+def get_reviews_in_idx(data: DataFrame) -> (Dict[str, List[int]], Dict[str, List[int]]):
+    max_length = get_max_review_length(data)
+
+    def pad_review(reviews: List[str]) -> str:
+        joint = " ".join(reviews).split(" ")
+        if len(joint) >= max_length:
+            pad = joint[:max_length]
+        else:
+            pad = joint + [PAD_WORD] * (max_length - len(joint))
+        return " ".join(pad)
+
+    review_by_user = data["review"] \
+        .groupby(data["userID"]) \
+        .apply(pad_review) \
+        .apply(review2wid) \
+        .to_dict()
+
+    review_by_item = data["review"] \
+        .groupby(data["itemID"]) \
+        .apply(pad_review) \
+        .apply(review2wid) \
+        .to_dict()
+
+    return review_by_user, review_by_item
+
+
+if __name__ == "__main__":
+    process_raw_data()
+    train_data, dev_data, test_data = get_train_dev_test_data()
+    known_data = pandas.concat([train_data, dev_data])
+    user_review, item_review = get_reviews_in_idx(known_data)
+    pickle.dump(user_review, open(ROOT_DIR.joinpath("data/user_review_word_idx.p"), "wb"))
+    pickle.dump(item_review, open(ROOT_DIR.joinpath("data/item_review_word_idx.p"), "wb"))
