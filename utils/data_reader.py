@@ -8,7 +8,7 @@ from sklearn.model_selection import train_test_split
 
 from utils.log_hepler import logger
 from utils.path_helper import ROOT_DIR
-from utils.word2vec_hepler import review2wid, PAD_WORD
+from utils.word2vec_hepler import review2wid, PAD_WORD, get_word_vec
 
 
 def get_all_data(path="data/reviews.json") -> DataFrame:
@@ -83,16 +83,18 @@ def get_reviews_in_idx(data: DataFrame, max_length) -> (Dict[str, List[int]], Di
             pad = joint + [PAD_WORD] * (max_length - len(joint))
         return " ".join(pad)
 
+    word_vec = get_word_vec()
+
     review_by_user = data["review"] \
         .groupby(data["userID"]) \
         .apply(pad_review) \
-        .apply(review2wid) \
+        .apply(review2wid, args=[word_vec]) \
         .to_dict()
 
     review_by_item = data["review"] \
         .groupby(data["itemID"]) \
         .apply(pad_review) \
-        .apply(review2wid) \
+        .apply(review2wid, args=[word_vec]) \
         .to_dict()
 
     return review_by_user, review_by_item
