@@ -10,7 +10,7 @@ class BaseConfig(object):
     learning_rate: float
     l2_regularization: float
     learning_rate_decay: float
-    use_cuda: bool
+    device: str
 
 
 class BaseModel(torch.nn.Module):

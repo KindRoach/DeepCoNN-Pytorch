@@ -73,14 +73,20 @@ class FMLayer(torch.nn.Module):
 
 
 class DeepCoNN(BaseModel):
-    def __init__(self, config: DeepCoNNConfig):
+    def __init__(self, config: DeepCoNNConfig, embedding_weight):
         assert config is not None
         super().__init__(config)
+
+        self.embedding = torch.nn.Embedding.from_pretrained(embedding_weight)
+        self.embedding.weight.requires_grad = False
+
         self.user_layer = ConvMaxLayer(config)
         self.item_layer = ConvMaxLayer(config)
         self.share_layer = FMLayer(config)
 
     def forward(self, user_review, item_review):
+        user_review = self.embedding(user_review)
+        item_review = self.embedding(item_review)
         user_latent = self.user_layer(user_review)
         item_latent = self.item_layer(item_review)
         latent = torch.cat([user_latent, item_latent], dim=1)

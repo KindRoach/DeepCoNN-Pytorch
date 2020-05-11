@@ -1,16 +1,15 @@
 import math
+import pickle
 import time
 
 import torch
-import numpy as np
 from pandas import DataFrame
-from torch.nn.utils.rnn import pad_sequence
 from torch.optim import lr_scheduler
+from torch.utils.data import DataLoader
 
 from model.BaseModel import BaseModel, BaseConfig
 from utils.log_hepler import logger, add_log_file, remove_log_file
 from utils.path_helper import ROOT_DIR
-from utils.word2vec_hepler import review2vec
 
 
 def save_model(model: torch.nn.Module, train_time: time.struct_time):
@@ -28,33 +27,31 @@ def load_model(path: str):
     return model
 
 
-def get_x_y_from_data(data: DataFrame, review_by_user: dict, review_by_item: dict, max_length: int):
-    user_review = [review_by_user[userID] for userID in data["userID"]]
-    user_review = [review2vec(r, max_length) for r in user_review]
-    user_review.append(torch.zeros([max_length, 300]))
-    user_review = pad_sequence(user_review, batch_first=True)[:-1]
+def get_data_loader(data: DataFrame, config: BaseConfig):
+    review_by_user = pickle.load(open(ROOT_DIR.joinpath("data/user_review_word_idx.p"), "rb"))
+    user_reviews = [torch.LongTensor(review_by_user[userID][:config.max_review_length]) for userID in data["userID"]]
+    user_reviews = torch.stack(user_reviews).to(config.device)
 
-    item_review = [review_by_item[itemID] for itemID in data["itemID"]]
-    item_review = [review2vec(r, max_length) for r in item_review]
-    item_review.append(torch.zeros([max_length, 300]))
-    item_review = pad_sequence(item_review, batch_first=True)[:-1]
+    review_by_item = pickle.load(open(ROOT_DIR.joinpath("data/item_review_word_idx.p"), "rb"))
+    item_reviews = [torch.LongTensor(review_by_item[itemID][:config.max_review_length]) for itemID in data["itemID"]]
+    item_reviews = torch.stack(item_reviews).to(config.device)
 
-    rating = torch.Tensor(data["rating"].to_list()).view(-1, 1)
+    ratings = torch.Tensor(data["rating"].to_list()).view(-1, 1).to(config.device)
 
-    return user_review, item_review, rating
+    dataset = torch.utils.data.TensorDataset(user_reviews, item_reviews, ratings)
+    data_iter = torch.utils.data.DataLoader(dataset, batch_size=config.batch_size, shuffle=True)
+    return data_iter
 
 
-def eval_model(model: BaseModel, data: DataFrame, loss, review_by_user: dict, review_by_item: dict) -> float:
+def eval_model(model: BaseModel, data_iter: DataLoader, loss) -> float:
     model.eval()
     model_name = model.__class__.__name__
     logger.info("Evaluating %s..." % model_name)
-    config: BaseConfig = model.config
     with torch.no_grad():
         predicts = []
         ratings = []
-        for batch_id, batch in enumerate(np.array_split(data, config.batch_size)):
-            user_review, item_review, rating = \
-                get_x_y_from_data(batch, review_by_user, review_by_item, config.max_review_length)
+        for batch_id, iter_i in enumerate(data_iter):
+            user_review, item_review, rating = iter_i
             predict = model(user_review, item_review)
             predicts.append(predict)
             ratings.append(rating)
@@ -72,34 +69,25 @@ def train_model(model: BaseModel, data: DataFrame):
 
     config: BaseConfig = model.config
     logger.info(config.__dict__)
+    model.to(config.device)
 
     opt = torch.optim.Adam(model.parameters(), config.learning_rate, weight_decay=config.l2_regularization)
     lr_s = lr_scheduler.ExponentialLR(opt, gamma=config.learning_rate_decay)
     loss = torch.nn.MSELoss()
 
-    review_by_user = data["review"].groupby(data["userID"]).apply(lambda reviews: " ".join(reviews)).to_dict()
-    review_by_item = data["review"].groupby(data["itemID"]).apply(lambda reviews: " ".join(reviews)).to_dict()
-
     last_progress = 0.
     last_loss = float("inf")
-
+    data_iter = get_data_loader(data, config)
     batches_num = math.ceil(len(data) / float(config.batch_size))
-    batches = list(np.array_split(data, batches_num))
     while model.current_epoch < config.num_epochs:
 
         model.train()
 
-        for batch_id in range(batches_num):
-
-            logger.debug("get_x_y_from_data...")
-            user_review, item_review, rating = \
-                get_x_y_from_data(batches[batch_id], review_by_user, review_by_item, config.max_review_length)
-
-            logger.debug("forward...")
+        for batch_id, iter_i in enumerate(data_iter):
+            user_review, item_review, rating = iter_i
+            opt.zero_grad()
             predict = model(user_review, item_review)
             li = loss(predict, rating)
-
-            logger.debug("backward...")
             li.backward()
             opt.step()
 
@@ -108,13 +96,13 @@ def train_model(model: BaseModel, data: DataFrame):
             total_batches = config.num_epochs * batches_num
             progress = current_batches / total_batches
             if progress - last_progress > 0.001:
-                logger.debug("epoch %d, batch %d, loss: %f (%.1f%%)" %
+                logger.debug("epoch %d, batch %d, loss: %f (%.2f%%)" %
                              (model.current_epoch, batch_id, li.item(), 100.0 * progress))
                 last_progress = progress
 
         # complete one epoch
         with torch.no_grad():
-            total_loss = eval_model(model, data, loss, review_by_user, review_by_item)
+            total_loss = eval_model(model, data_iter, loss)
             logger.info("Epoch %d complete. Total loss=%f." % (model.current_epoch, total_loss))
 
             # save best model

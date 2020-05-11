@@ -16,18 +16,18 @@ WORD_VEC: Word2VecKeyedVectors
 def review2wid(review: str) -> List[int]:
     wids = []
     for word in review.split():
-        if word in _WORD_VEC:
-            wid = _WORD_VEC.vocab[word].index
+        if word in WORD_VEC:
+            wid = WORD_VEC.vocab[word].index
         else:
-            wid = _WORD_VEC.vocab[PAD_WORD].index
+            wid = WORD_VEC.vocab[PAD_WORD].index
         wids.append(wid)
     return wids
 
 
 logger.info("loading word2vec model...")
 path = ROOT_DIR.joinpath('data/GoogleNews-vectors-negative300.bin')
-_WORD_VEC = KeyedVectors.load_word2vec_format(path, binary=True)
-_WORD_VEC.add([PAD_WORD], np.zeros([1, 300]))
+WORD_VEC = KeyedVectors.load_word2vec_format(path, binary=True)
+WORD_VEC.add([PAD_WORD], np.zeros([1, 300]))
 logger.info("word2vec model loaded.")
 
 if __name__ == "__main__":
@@ -36,7 +36,7 @@ if __name__ == "__main__":
     unknown_words: Set[str] = set()
     for review in df["review"]:
         for word in review.split():
-            if word not in _WORD_VEC:
+            if word not in WORD_VEC:
                 unknown_words.add(word)
 
     logger.warning(f"{len(unknown_words)} unknown words!")
