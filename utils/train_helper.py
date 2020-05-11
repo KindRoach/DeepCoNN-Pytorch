@@ -18,6 +18,7 @@ def save_model(model: torch.nn.Module, train_time: time.struct_time):
     )
     path = ROOT_DIR.joinpath(path)
     torch.save(model, path)
+    logger.info(f"model saved: {path}")
 
 
 def load_model(path: str):
@@ -30,13 +31,13 @@ def load_model(path: str):
 def get_data_loader(data: DataFrame, config: BaseConfig):
     review_by_user = pickle.load(open(ROOT_DIR.joinpath("data/user_review_word_idx.p"), "rb"))
     user_reviews = [torch.LongTensor(review_by_user[userID][:config.max_review_length]) for userID in data["userID"]]
-    user_reviews = torch.stack(user_reviews).to(config.device)
+    user_reviews = torch.stack(user_reviews)
 
     review_by_item = pickle.load(open(ROOT_DIR.joinpath("data/item_review_word_idx.p"), "rb"))
     item_reviews = [torch.LongTensor(review_by_item[itemID][:config.max_review_length]) for itemID in data["itemID"]]
-    item_reviews = torch.stack(item_reviews).to(config.device)
+    item_reviews = torch.stack(item_reviews)
 
-    ratings = torch.Tensor(data["rating"].to_list()).view(-1, 1).to(config.device)
+    ratings = torch.Tensor(data["rating"].to_list()).view(-1, 1)
 
     dataset = torch.utils.data.TensorDataset(user_reviews, item_reviews, ratings)
     data_iter = torch.utils.data.DataLoader(dataset, batch_size=config.batch_size, shuffle=True)
@@ -46,12 +47,16 @@ def get_data_loader(data: DataFrame, config: BaseConfig):
 def eval_model(model: BaseModel, data_iter: DataLoader, loss) -> float:
     model.eval()
     model_name = model.__class__.__name__
-    logger.info("Evaluating %s..." % model_name)
+    config: BaseConfig = model.config
+    logger.debug("Evaluating %s..." % model_name)
     with torch.no_grad():
         predicts = []
         ratings = []
         for batch_id, iter_i in enumerate(data_iter):
             user_review, item_review, rating = iter_i
+            user_review = user_review.to(config.device)
+            item_review = item_review.to(config.device)
+            rating = rating.to(config.device)
             predict = model(user_review, item_review)
             predicts.append(predict)
             ratings.append(rating)
@@ -79,12 +84,16 @@ def train_model(model: BaseModel, data: DataFrame):
     last_loss = float("inf")
     data_iter = get_data_loader(data, config)
     batches_num = math.ceil(len(data) / float(config.batch_size))
+
     while model.current_epoch < config.num_epochs:
 
         model.train()
 
         for batch_id, iter_i in enumerate(data_iter):
             user_review, item_review, rating = iter_i
+            user_review = user_review.to(config.device)
+            item_review = item_review.to(config.device)
+            rating = rating.to(config.device)
             opt.zero_grad()
             predict = model(user_review, item_review)
             li = loss(predict, rating)
