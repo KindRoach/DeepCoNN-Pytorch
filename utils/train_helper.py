@@ -66,7 +66,7 @@ def eval_model(model: BaseModel, data_iter: DataLoader, loss) -> float:
         return loss(predicts, ratings).item()
 
 
-def train_model(model: BaseModel, data: DataFrame):
+def train_model(model: BaseModel, train_data: DataFrame, dev_data: DataFrame):
     model_name = model.__class__.__name__
     train_time = time.localtime()
     add_log_file(logger, "log/%s_%s.log" % (model_name, time.strftime("%Y%m%d%H%M%S", train_time)))
@@ -82,14 +82,15 @@ def train_model(model: BaseModel, data: DataFrame):
 
     last_progress = 0.
     last_loss = float("inf")
-    data_iter = get_data_loader(data, config)
-    batches_num = math.ceil(len(data) / float(config.batch_size))
+    train_data_iter = get_data_loader(train_data, config)
+    dev_data_iter = get_data_loader(dev_data, config)
+    batches_num = math.ceil(len(train_data) / float(config.batch_size))
 
     while model.current_epoch < config.num_epochs:
 
         model.train()
 
-        for batch_id, iter_i in enumerate(data_iter):
+        for batch_id, iter_i in enumerate(train_data_iter):
             user_review, item_review, rating = iter_i
             user_review = user_review.to(config.device)
             item_review = item_review.to(config.device)
@@ -110,14 +111,15 @@ def train_model(model: BaseModel, data: DataFrame):
                 last_progress = progress
 
         # complete one epoch
-        with torch.no_grad():
-            total_loss = eval_model(model, data_iter, loss)
-            logger.info("Epoch %d complete. Total loss=%f." % (model.current_epoch, total_loss))
+        train_loss = eval_model(model, train_data_iter, loss)
+        dev_loss = eval_model(model, dev_data_iter, loss)
+        logger.info("Epoch %d complete. Total loss(train/dev)=%f/%f"
+                    % (model.current_epoch, train_loss, dev_loss))
 
-            # save best model
-            if total_loss < last_loss:
-                last_loss = total_loss
-                save_model(model, train_time)
+        # save best model
+        if train_loss < last_loss:
+            last_loss = train_loss
+            save_model(model, train_time)
 
         lr_s.step(model.current_epoch)
         model.current_epoch += 1
