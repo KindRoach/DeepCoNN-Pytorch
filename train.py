@@ -11,10 +11,10 @@ know_data = pandas.concat([train_data, dev_data])
 
 config = DeepCoNNConfig(
     num_epochs=50,
-    batch_size=64,
+    batch_size=16,
     learning_rate=1e-3,
-    l2_regularization=1e-6,
-    learning_rate_decay=0.99,
+    l2_regularization=1e-2,
+    learning_rate_decay=0.95,
     device="cuda:1" if torch.cuda.is_available() else "cpu",
     max_review_length=2048,
     word_dim=WORD_EMBEDDING_SIZE,

@@ -40,7 +40,8 @@ def get_data_loader(data: DataFrame, config: BaseConfig):
     ratings = torch.Tensor(data["rating"].to_list()).view(-1, 1)
 
     dataset = torch.utils.data.TensorDataset(user_reviews, item_reviews, ratings)
-    data_iter = torch.utils.data.DataLoader(dataset, batch_size=config.batch_size, shuffle=True)
+    pin_memory = config.device != "cpu"
+    data_iter = torch.utils.data.DataLoader(dataset, batch_size=config.batch_size, shuffle=True, pin_memory=pin_memory)
     return data_iter
 
 
