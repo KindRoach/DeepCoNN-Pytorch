@@ -1,5 +1,4 @@
 import math
-import pickle
 import time
 
 import torch
@@ -8,6 +7,7 @@ from torch.optim import lr_scheduler
 from torch.utils.data import DataLoader
 
 from model.BaseModel import BaseModel, BaseConfig
+from utils.data_reader import get_review_dict
 from utils.log_hepler import logger, add_log_file, remove_log_file
 from utils.path_helper import ROOT_DIR
 
@@ -29,11 +29,11 @@ def load_model(path: str):
 
 
 def get_data_loader(data: DataFrame, config: BaseConfig):
-    review_by_user = pickle.load(open(ROOT_DIR.joinpath("data/user_review_word_idx.p"), "rb"))
+    review_by_user, review_by_item = get_review_dict()
+
     user_reviews = [torch.LongTensor(review_by_user[userID][:config.max_review_length]) for userID in data["userID"]]
     user_reviews = torch.stack(user_reviews)
 
-    review_by_item = pickle.load(open(ROOT_DIR.joinpath("data/item_review_word_idx.p"), "rb"))
     item_reviews = [torch.LongTensor(review_by_item[itemID][:config.max_review_length]) for itemID in data["itemID"]]
     item_reviews = torch.stack(item_reviews)
 

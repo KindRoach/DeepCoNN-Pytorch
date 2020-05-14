@@ -17,6 +17,10 @@ class DeepCoNNConfig(BaseConfig):
 
 
 class ConvMaxLayer(torch.nn.Module):
+    """
+    The independent layer for user review and item review.
+    """
+
     def __init__(self, config: DeepCoNNConfig):
         super().__init__()
 
@@ -36,6 +40,11 @@ class ConvMaxLayer(torch.nn.Module):
         self.full_connect = torch.nn.Linear(config.kernel_deep * len(config.kernel_widths), config.latent_factors)
 
     def forward(self, review):
+        """
+        Input Shape: (BatchSize, ReviewLength, WordEmbeddingSize)
+        Output Shape: (BatchSize, LatentFactorsSize)
+        """
+
         outputs = []
         review = review.permute(0, 2, 1)
         for max_pool, conv in zip(self.maxs, self.convs):
@@ -54,6 +63,8 @@ class FMLayer(torch.nn.Module):
     """
     The implementation of Factorization machine.
     Reference: https://www.kaggle.com/gennadylaptev/factorization-machine-implemented-in-pytorch
+    Input Shape: (BatchSize, LatentFactorsSize * 2)
+    Output Shape: (BatchSize)
     """
 
     def __init__(self, config: DeepCoNNConfig):
@@ -73,6 +84,10 @@ class FMLayer(torch.nn.Module):
 
 
 class DeepCoNN(BaseModel):
+    """
+    Main network, including two independent ConvMaxLayers and one shared FMLayer.
+    """
+
     def __init__(self, config: DeepCoNNConfig, embedding_weight):
         assert config is not None
         super().__init__(config)
@@ -85,6 +100,11 @@ class DeepCoNN(BaseModel):
         self.share_layer = FMLayer(config)
 
     def forward(self, user_review, item_review):
+        """
+        Input Shape: (BatchSize, ReviewLength)
+        Output Shape: (BatchSize)
+        """
+
         user_review = self.embedding(user_review)
         item_review = self.embedding(item_review)
         user_latent = self.user_layer(user_review)

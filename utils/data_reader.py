@@ -8,7 +8,7 @@ from sklearn.model_selection import train_test_split
 
 from utils.log_hepler import logger
 from utils.path_helper import ROOT_DIR
-from utils.word2vec_hepler import review2wid, PAD_WORD, get_word_vec
+from utils.word2vec_hepler import review2wid, PAD_WORD, get_word_vec, save_embedding_weights
 
 
 def get_all_data(path="data/reviews.json") -> DataFrame:
@@ -34,8 +34,9 @@ def get_punctuations(path="data/punctuations.txt") -> Set[str]:
 
 def get_max_review_length(data: DataFrame, percentile: float = 0.85) -> int:
     """
-    We set the max review length to 85% percentile of all data.
+    We set the max review length to 85% percentile of all data as default.
     """
+
     review_lengths = data["review"] \
         .groupby(data["userID"]) \
         .apply(lambda words: len(" ".join(words).split()))
@@ -49,7 +50,12 @@ def get_max_review_length(data: DataFrame, percentile: float = 0.85) -> int:
     return max(max_length_item, max_length_user)
 
 
-def process_raw_data(in_path="data/Digital_Music_5.json", out_path="data/reviews.json") -> DataFrame:
+def process_raw_data(in_path="data/Digital_Music_5.json", out_path="data/reviews.json"):
+    """
+    Read raw data and remove useless columns and clear review text.
+    Then save the result to file system.
+    """
+
     logger.info("reading raw data...")
     df = pandas.read_json(ROOT_DIR.joinpath(in_path), lines=True)
     df = df[["reviewerID", "asin", "reviewText", "overall"]]
@@ -74,7 +80,14 @@ def process_raw_data(in_path="data/Digital_Music_5.json", out_path="data/reviews
     logger.info("Processed data saved.")
 
 
-def get_reviews_in_idx(data: DataFrame, max_length) -> (Dict[str, List[int]], Dict[str, List[int]]):
+def get_reviews_in_idx(data: DataFrame, max_length: int, word_vec) -> (Dict[str, List[int]], Dict[str, List[int]]):
+    """
+    1. Group review by user and item.
+    2. Pad grouped review to max_length.
+    3. Convert word into word idx.
+    :return The dictionary from userID/itemID to review text in word idx.
+    """
+
     def pad_review(reviews: List[str]) -> str:
         joint = " ".join(reviews).split(" ")
         if len(joint) >= max_length:
@@ -82,8 +95,6 @@ def get_reviews_in_idx(data: DataFrame, max_length) -> (Dict[str, List[int]], Di
         else:
             pad = joint + [PAD_WORD] * (max_length - len(joint))
         return " ".join(pad)
-
-    word_vec = get_word_vec()
 
     review_by_user = data["review"] \
         .groupby(data["userID"]) \
@@ -100,11 +111,22 @@ def get_reviews_in_idx(data: DataFrame, max_length) -> (Dict[str, List[int]], Di
     return review_by_user, review_by_item
 
 
+def get_review_dict():
+    user_review = pickle.load(open(ROOT_DIR.joinpath("data/user_review_word_idx.p"), "rb"))
+    item_review = pickle.load(open(ROOT_DIR.joinpath("data/item_review_word_idx.p"), "rb"))
+    return user_review, item_review
+
+
 if __name__ == "__main__":
     process_raw_data()
+
     train_data, dev_data, test_data = get_train_dev_test_data()
     known_data = pandas.concat([train_data, dev_data])
     max_length = get_max_review_length(known_data)
-    user_review, item_review = get_reviews_in_idx(known_data, max_length)
+
+    word_vec = get_word_vec()
+    save_embedding_weights(word_vec)
+
+    user_review, item_review = get_reviews_in_idx(known_data, max_length, word_vec)
     pickle.dump(user_review, open(ROOT_DIR.joinpath("data/user_review_word_idx.p"), "wb"))
     pickle.dump(item_review, open(ROOT_DIR.joinpath("data/item_review_word_idx.p"), "wb"))

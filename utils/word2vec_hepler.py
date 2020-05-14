@@ -14,6 +14,11 @@ WORD_EMBEDDING_SIZE = 300
 
 
 def review2wid(review: str, word_vec: Word2VecKeyedVectors) -> List[int]:
+    """
+    Convert words in review to word idx.
+    The idx is from pre-trained word embedding model.
+    """
+
     wids = []
     for word in review.split():
         if word in word_vec:
@@ -25,6 +30,10 @@ def review2wid(review: str, word_vec: Word2VecKeyedVectors) -> List[int]:
 
 
 def get_word_vec(path='data/GoogleNews-vectors-negative300.bin'):
+    """
+    Read pre-trained word embedding model, and add "<pad>" to it with zero weight.
+    """
+
     logger.info("loading word2vec model...")
     path = ROOT_DIR.joinpath(path)
     word_vec = KeyedVectors.load_word2vec_format(path, binary=True)
@@ -34,6 +43,12 @@ def get_word_vec(path='data/GoogleNews-vectors-negative300.bin'):
 
 
 def save_embedding_weights(word_vec, out_path="data/embedding_weight.pt"):
+    """
+    Save the weights of pre-trained word embedding model to file.
+    Thus we don't need to load it when train our model.
+    This helps to save RAM and model init time.
+    """
+
     weight = torch.Tensor(word_vec.vectors)
     torch.save(weight, ROOT_DIR.joinpath(out_path))
     logger.info("Word embedding weight saved.")
@@ -43,10 +58,11 @@ def load_embedding_weights(path="data/embedding_weight.pt"):
     return torch.load(path)
 
 
+# Find the unknowns words in review text.
+# This step is not necessary for model train.
 if __name__ == "__main__":
     df = pandas.read_json(ROOT_DIR.joinpath("data/reviews.json"), lines=True)
     word_vec = get_word_vec()
-    save_embedding_weights(word_vec)
     unknown_words: Set[str] = set()
     for review in df["review"]:
         for word in review.split():
