@@ -80,33 +80,16 @@ def process_raw_data(in_path="data/Digital_Music_5.json", out_path="data/reviews
     logger.info("Processed data saved.")
 
 
-def get_reviews_in_idx(data: DataFrame, max_length: int, word_vec) -> (Dict[str, List[int]], Dict[str, List[int]]):
+def get_reviews_in_idx(data: DataFrame, word_vec) -> (Dict[str, DataFrame], Dict[str, DataFrame]):
     """
     1. Group review by user and item.
-    2. Pad grouped review to max_length.
-    3. Convert word into word idx.
-    :return The dictionary from userID/itemID to review text in word idx.
+    2. Convert word into word idx.
+    :return The dictionary from userID/itemID to review text in word idx with itemID/userID.
     """
 
-    def pad_review(reviews: List[str]) -> str:
-        joint = " ".join(reviews).split(" ")
-        if len(joint) >= max_length:
-            pad = joint[:max_length]
-        else:
-            pad = joint + [PAD_WORD] * (max_length - len(joint))
-        return " ".join(pad)
-
-    review_by_user = data["review"] \
-        .groupby(data["userID"]) \
-        .apply(pad_review) \
-        .apply(review2wid, args=[word_vec]) \
-        .to_dict()
-
-    review_by_item = data["review"] \
-        .groupby(data["itemID"]) \
-        .apply(pad_review) \
-        .apply(review2wid, args=[word_vec]) \
-        .to_dict()
+    data["review"] = data["review"].apply(review2wid, args=[word_vec])
+    review_by_user = dict(list(data[["itemID", "review"]].groupby(data["userID"])))
+    review_by_item = dict(list(data[["userID", "review"]].groupby(data["itemID"])))
 
     return review_by_user, review_by_item
 
@@ -127,6 +110,6 @@ if __name__ == "__main__":
     word_vec = get_word_vec()
     save_embedding_weights(word_vec)
 
-    user_review, item_review = get_reviews_in_idx(known_data, max_length, word_vec)
+    user_review, item_review = get_reviews_in_idx(known_data, word_vec)
     pickle.dump(user_review, open(ROOT_DIR.joinpath("data/user_review_word_idx.p"), "wb"))
     pickle.dump(item_review, open(ROOT_DIR.joinpath("data/item_review_word_idx.p"), "wb"))

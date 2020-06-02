@@ -1,5 +1,7 @@
 import math
 import time
+from itertools import chain
+from typing import Dict, List
 
 import torch
 from pandas import DataFrame
@@ -10,6 +12,7 @@ from model.BaseModel import BaseModel, BaseConfig
 from utils.data_reader import get_review_dict
 from utils.log_hepler import logger, add_log_file, remove_log_file
 from utils.path_helper import ROOT_DIR
+from utils.word2vec_hepler import PAD_WORD_ID
 
 
 def save_model(model: torch.nn.Module, train_time: time.struct_time):
@@ -28,20 +31,59 @@ def load_model(path: str):
     return model
 
 
+def load_reviews(review: Dict[str, DataFrame], query_id: str, exclude_id: str, max_length) -> List[int]:
+    """
+    1. Load review from review dict by userID/itemID
+    2. Exclude unknown review by itemID/userID.
+    3. Pad review text to max_length
+
+    E.g. get all reviews written by user1 except itemA
+         when we predict the rating of itemA marked by user1.
+
+        DataFrame for user1:
+
+            | itemID | review |
+            | itemA  | 0,1,2  |
+            | itemB  | 1,2,3  |
+            | itemC  | 2,3,4  |
+
+        query_id: user1
+        exclude_id: itemA
+        max_length: 8
+
+        output = [1, 2, 3, 2, 3, 4, PAD_WORD_ID, PAD_WORD_ID]
+    """
+
+    reviews = review[query_id]
+    key = "userID" if "userID" in reviews.columns else "itemID"
+    reviews = reviews["review"][reviews[key] != exclude_id].to_list()
+    reviews = list(chain.from_iterable(reviews))
+
+    if len(reviews) >= max_length:
+        reviews = reviews[:max_length]
+    else:
+        reviews = reviews + [PAD_WORD_ID] * (max_length - len(reviews))
+    return reviews
+
+
 def get_data_loader(data: DataFrame, config: BaseConfig):
+    logger.info("Generating data iter...")
     review_by_user, review_by_item = get_review_dict()
 
-    user_reviews = [torch.LongTensor(review_by_user[userID][:config.max_review_length]) for userID in data["userID"]]
+    user_reviews = [torch.LongTensor(load_reviews(review_by_user, userID, itemID, config.max_review_length))
+                    for userID, itemID in zip(data["userID"], data["itemID"])]
     user_reviews = torch.stack(user_reviews)
 
-    item_reviews = [torch.LongTensor(review_by_item[itemID][:config.max_review_length]) for itemID in data["itemID"]]
+    item_reviews = [torch.LongTensor(load_reviews(review_by_item, itemID, userID, config.max_review_length))
+                    for userID, itemID in zip(data["userID"], data["itemID"])]
     item_reviews = torch.stack(item_reviews)
 
     ratings = torch.Tensor(data["rating"].to_list()).view(-1, 1)
 
     dataset = torch.utils.data.TensorDataset(user_reviews, item_reviews, ratings)
-    pin_memory = config.device != "cpu"
+    pin_memory = config.device not in ["cpu", "CPU"]
     data_iter = torch.utils.data.DataLoader(dataset, batch_size=config.batch_size, shuffle=True, pin_memory=pin_memory)
+    logger.info("Data iter loaded.")
     return data_iter
 
 
