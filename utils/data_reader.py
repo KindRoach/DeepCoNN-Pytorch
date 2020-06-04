@@ -32,24 +32,6 @@ def get_punctuations(path="data/punctuations.txt") -> Set[str]:
         return set(f.read().splitlines())
 
 
-def get_max_review_length(data: DataFrame, percentile: float = 0.85) -> int:
-    """
-    We set the max review length to 85% percentile of all data as default.
-    """
-
-    review_lengths = data["review"] \
-        .groupby(data["userID"]) \
-        .apply(lambda words: len(" ".join(words).split()))
-    max_length_user = int(review_lengths.quantile(percentile, interpolation="lower"))
-
-    review_lengths = data["review"] \
-        .groupby(data["itemID"]) \
-        .apply(lambda words: len(" ".join(words).split()))
-    max_length_item = int(review_lengths.quantile(percentile, interpolation="lower"))
-
-    return max(max_length_item, max_length_user)
-
-
 def process_raw_data(in_path="data/Digital_Music_5.json", out_path="data/reviews.json"):
     """
     Read raw data and remove useless columns and clear review text.
@@ -105,7 +87,6 @@ if __name__ == "__main__":
 
     train_data, dev_data, test_data = get_train_dev_test_data()
     known_data = pandas.concat([train_data, dev_data])
-    max_length = get_max_review_length(known_data)
 
     word_vec = get_word_vec()
     save_embedding_weights(word_vec)
